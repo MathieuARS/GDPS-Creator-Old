@@ -1467,8 +1467,8 @@ async def ip(ctx, option=None, value=None, *, reason=None):
             await ctx.send("You need to enter a ban reason.")
             return
         url = "https://api.cloudflare.com/client/v4/zones/01e41405b861ae12ebde1ffa69ee4dee/firewall/access_rules/rules"
-        headers = {"X-Auth-Email": "mathieu.maik.15@gmail.com",
-                   "X-Auth-Key": "e6b8a4d07f78528eeba55fa502a92424abe06",
+        headers = {"X-Auth-Email": cloudflare_email,
+                   "X-Auth-Key": cloudflare_api_key,
                    "Content-type": "application/json"}
         req_data = {"mode": "block",
                     "configuration": {"target": "ip",
@@ -1491,8 +1491,8 @@ async def ip(ctx, option=None, value=None, *, reason=None):
             await ctx.send(f"There was an error with cloudflare.\n\nError: {error}")
     elif option == "unban":
         url = f"https://api.cloudflare.com/client/v4/zones/01e41405b861ae12ebde1ffa69ee4dee/firewall/access_rules/rules?configuration.target=ip&configuration.value={value}&mode=block"
-        headers = {"X-Auth-Email": "mathieu.maik.15@gmail.com",
-                   "X-Auth-Key": "e6b8a4d07f78528eeba55fa502a92424abe06",
+        headers = {"X-Auth-Email": cloudflare_email,
+                   "X-Auth-Key": cloudflare_api_key,
                    "Content-type": "application/json"}
         try:
             req = requests.get(url, headers=headers, timeout=5)
