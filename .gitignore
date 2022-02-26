@@ -1,2 +1,4 @@
 .env
 .git
+on_cooldown.json
+gdps_import.py

@@ -1,6 +1,6 @@
 from logging import exception
 import os
-import discord
+import nextcord as discord
 import string
 import random
 import asyncio
@@ -8,10 +8,10 @@ import shutil
 import time
 import json
 import requests
-import mysql.connector
+import pymysql
 import re
 from datetime import datetime
-from discord.ext import commands
+from nextcord.ext import commands
 from dotenv import load_dotenv, find_dotenv
 from os import path
 
@@ -32,11 +32,12 @@ client = commands.Bot(command_prefix = prefix, help_command=None, intents=intent
 
 connection = None
 try:
-    connection = mysql.connector.connect(host=mysql_ip,
-                                         database=mysql_database,
-                                         user=mysql_user,
-                                         port = int(mysql_port),
-                                         password=mysql_pass)
+    connection = pymysql.connect(host=mysql_ip,
+                                 database=mysql_database,
+                                 user=mysql_user,
+                                 port = int(mysql_port),
+                                 password=mysql_pass,
+                                 autocommit=True)
     print("Connected to the DB!")
 except:
     print("Couldn't connect to the database.")
@@ -45,8 +46,7 @@ except:
 if connection is None:
     exit()
 
-connection.autocommit = 1
-cursor = connection.cursor(buffered=True)
+cursor = connection.cursor()
 
 currently_creating = []
 in_setup = []
@@ -80,7 +80,6 @@ async def c(ctx):
     data = cursor.fetchall()
     allowed_channels = [797900335070183474, #test-bot - GDPSFH
                         748238238736711761, #create-gdps - GDPSFH
-                        866634174722342923, #create-gdps - GDPS Hub
                         863435775197839369] #create-gdps - GDPSFH RU
     cursor = execute_sql("select lockdown_status from gdps_creator_config where id = %s", [server_config])
     lockdown_status = cursor.fetchall()
@@ -220,17 +219,6 @@ async def c(ctx):
                 await ctx.send(embed=embed)
             else:
                 print(e)
-
-@client.command()
-async def test(ctx, *, args):
-    if ctx.author.id != 195598321501470720:
-        await ctx.send("no")
-        return
-    result = re.match(r"^[a-zA-Z0-9]{12}$", args)
-    if result:
-        await ctx.send("string accepted")
-    else:
-        await ctx.send("Not accepted")
 
 @client.command()
 async def deluser(ctx, arg1=None):
@@ -447,7 +435,14 @@ async def info(ctx, arg1=None):
                 created_in = "GDPS Hub"
             else:
                 created_in = "Unknown"
-            embed = discord.Embed(title=embed_title, description = f"**Server name** : {data[0][1]} \n**Custom URL** : {data[0][2]} \n**Original version** : {data[0][3]} \n**Created in** : {created_in}", color = discord.Colour.green())
+
+            api_banned = "Unknown"
+            if data[0][10] == 1:
+                api_banned = "No"
+            elif data[0][10] == 0:
+                api_banned = "Yes"
+
+            embed = discord.Embed(title=embed_title, description = f"**Server name** : {data[0][1]} \n**Custom URL** : {data[0][2]} \n**Original version** : {data[0][3]} \n**Created in** : {created_in} \n**API Banned** : {api_banned}", color = discord.Colour.green())
             await ctx.send(embed=embed)
     else:
         embed = discord.Embed(title=no_gdps_msg, color = discord.Colour.red())
@@ -616,6 +611,40 @@ async def destroy(ctx):
     await ctx.send("https://tenor.com/view/nuke-press-the-button-bomb-them-nuke-them-cat-gif-16361990")
 
 @client.command()
+async def power(ctx, option = None, status = None):
+    if ctx.author.id != 195598321501470720:
+        await ctx.send("no")
+        return
+    if option is None:
+        await ctx.send("Please enter an option: apache, mysql, ftp")
+        return
+    if status is None:
+        await ctx.send("Please enter a service status: on, off")
+        return
+    if option == "apache":
+        if status == "on":
+            process = await asyncio.create_subprocess_shell(f'service apache2 start')
+            await process.communicate()
+        elif status == "off":
+            process = await asyncio.create_subprocess_shell(f'service apache2 stop')
+            await process.communicate()
+    elif option == "mysql":
+        if status == "on":
+            process = await asyncio.create_subprocess_shell(f'service mysql start')
+            await process.communicate()
+        elif status == "off":
+            process = await asyncio.create_subprocess_shell(f'service mysql stop')
+            await process.communicate()
+    elif option == "ftp":
+        if status == "on":
+            process = await asyncio.create_subprocess_shell(f'service proftpd start')
+            await process.communicate()
+        elif status == "off":
+            process = await asyncio.create_subprocess_shell(f'service proftpd stop')
+            await process.communicate()
+    await ctx.send("Done!")
+
+@client.command()
 async def help(ctx, arg1="null"): 
     if arg1 == "admin":
         embed = discord.Embed(title="GDPS Creator admin commands", description = f"**{prefix}deluser** : Delete a user from the DB\n"
@@ -642,7 +671,7 @@ async def fixftp(ctx):
     if ctx.author.id != 195598321501470720:
         await ctx.send("no")
         return
-    cursor = execute_sql("select gdps_custom_url,gdps_password from gdps_creator_userdata")
+    cursor = execute_sql("select gdps_custom_url,gdps_password from gdps_creator_userdata where left_server = 0")
     gdps_curl = cursor.fetchall()
     for gcurl in gdps_curl:
         curl = gcurl[0]
@@ -650,6 +679,20 @@ async def fixftp(ctx):
         process = await asyncio.create_subprocess_shell(f'./CreateFTP-Bot.sh {curl} {password}')
         await process.communicate()
         print(f"create ftp: {curl}")
+    await ctx.send("done.")
+
+@client.command()
+async def delftp(ctx):
+    if ctx.author.id != 195598321501470720:
+        await ctx.send("no")
+        return
+    cursor = execute_sql("select gdps_custom_url from gdps_creator_userdata")
+    gdps_curl = cursor.fetchall()
+    for gcurl in gdps_curl:
+        curl = gcurl[0]
+        process = await asyncio.create_subprocess_shell(f'deluser gdps_{curl}')
+        await process.communicate()
+        print(f"delete ftp: {curl}")
     await ctx.send("done.")
 
 @client.command()
@@ -730,16 +773,16 @@ async def getbackup(ctx, arg1=None, offline=None):
                 return
             else:
                 arg1 = await client.fetch_user(arg1)
-        if ctx.author.id != 195598321501470720 and ctx.author.id != 180790976128745472:
-            is_donator = await check_donator(ctx, arg1)
-            if is_donator is False:
-                return
+        #if ctx.author.id != 195598321501470720 and ctx.author.id != 180790976128745472:
+            #is_donator = await check_donator(ctx, arg1)
+            #if is_donator is False:
+                #return
         cursor = execute_sql("select * from gdps_creator_userdata where userID = %s", [arg1.id])
         arg1_data = cursor.fetchall()
-    else:
-        is_donator = await check_donator(ctx)
-        if is_donator is False:
-            return
+    #else:
+        #is_donator = await check_donator(ctx)
+        #if is_donator is False:
+            #return
     print("command used: ps!getbackup")
     userid = str(ctx.author.id)
     cursor = execute_sql("select * from gdps_creator_userdata where userID = %s", [userid])
@@ -765,7 +808,7 @@ async def getbackup(ctx, arg1=None, offline=None):
                     random_id = random.choices(printable, k=30)
                     backup_id = ''.join(random_id)
                     user_custom_url = user[0][2]
-                    download_link = f"https://backups.fhgdps.com/tools/backup/{backup_id}/{user_custom_url}-backup.zip"
+                    download_link = f"https://backups.fhgdps.com/backup/{backup_id}/{user_custom_url}-backup.zip"
 
                     embed = discord.Embed(description="When the backup will be created you will recieve a private message with the link to download it", color = discord.Colour.green())
                     await ctx.send(embed=embed)
@@ -1084,7 +1127,7 @@ async def delallgdps(ctx):
             await ctx.send(embed=embed)
             warn3 = await client.wait_for('message', check=lambda message: message.author == ctx.author)
             if warn3.content.lower() == "yes":
-                embed = discord.Embed(title=f"<a:loading:762295133747413022> Deleting 3982 GDPS please wait...", color = discord.Colour.green())
+                embed = discord.Embed(title=f"<a:loading:762295133747413022> Deleting 8575 GDPS please wait...", color = discord.Colour.green())
                 delete_msg = await ctx.send(embed=embed)
                 await asyncio.sleep(30)
                 await delete_msg.delete()
@@ -1240,13 +1283,13 @@ async def status(ctx):
     right_channel = await in_right_channel(ctx)
     if not right_channel:
         return
-    count_url = "http://api.fhgdps.com:3209/infos/"
+    count_url = "http://api.fhgdps.com/infos/"
     count_data = {"key": web_api_key,
                   "data": "gdps_count"}
     ban_data = {"key": web_api_key,
                 "data": "gdps_bans"}
 
-    check_api_url = "http://api.fhgdps.com:3208/status/"
+    check_api_url = "http://api.fhgdps.com/status/"
     gdps_count = "API offline"
     gdps_bans = "API offline"
     api_status = "null"
@@ -1268,7 +1311,7 @@ async def status(ctx):
     apache_emoji = "Error"
     api_emoji = "Error"
 
-    if "yes" in api_status:
+    if api_status == 1:
         api_emoji = ":green_circle:"
     else:
         api_emoji = ":red_circle:"
@@ -1312,14 +1355,14 @@ async def safestop(ctx):
         return
     cursor = execute_sql("update gdps_creator_config set lockdown_status = 1 where id = 'gdpsfh'")
     cursor = execute_sql("update gdps_creator_config set lockdown_status = 1 where id = 'gdpsfhru'")
-    cursor = execute_sql("update gdps_creator_config set lockdown_status = 1 where id = 'gdpshub'")
     setup_count = len(currently_creating)
     if len(in_setup) != 0:
         embed = discord.Embed(title="<a:loading:762295133747413022> Waiting for current gdps creation process to finish...", color = discord.Colour.green())
-        waiting = await ctx.author.send(embed=embed)
+        waiting = await ctx.send(embed=embed)
         while True:
             if len(in_setup) == 0:
                 break
+            await asyncio.wait(1)
         await waiting.delete()
     if setup_count != 0:
         embed = discord.Embed(title=f"<a:loading:762295133747413022> Notifying {setup_count} users currently in setup...", color = discord.Colour.green())
@@ -1339,7 +1382,6 @@ async def safestop(ctx):
         await ctx.send(embed=embed)
     cursor = execute_sql("update gdps_creator_config set lockdown_status = 0 where id = 'gdpsfh'")
     cursor = execute_sql("update gdps_creator_config set lockdown_status = 0 where id = 'gdpsfhru'")
-    cursor = execute_sql("update gdps_creator_config set lockdown_status = 0 where id = 'gdpshub'")
     exit()
     
 @client.command()
@@ -1491,8 +1533,8 @@ async def ip(ctx, option=None, value=None, *, reason=None):
             await ctx.send(f"There was an error with cloudflare.\n\nError: {error}")
     elif option == "unban":
         url = f"https://api.cloudflare.com/client/v4/zones/01e41405b861ae12ebde1ffa69ee4dee/firewall/access_rules/rules?configuration.target=ip&configuration.value={value}&mode=block"
-        headers = {"X-Auth-Email": cloudflare_email,
-                   "X-Auth-Key": cloudflare_api_key,
+        headers = {"X-Auth-Email": "mathieu.maik.15@gmail.com",
+                   "X-Auth-Key": "e6b8a4d07f78528eeba55fa502a92424abe06",
                    "Content-type": "application/json"}
         try:
             req = requests.get(url, headers=headers, timeout=5)
@@ -1529,78 +1571,6 @@ async def ip(ctx, option=None, value=None, *, reason=None):
     else:
         await ctx.send("Invalid option.")
         return
-
-"""
-@client.event
-async def on_raw_reaction_add(payload):
-    allowed_users = [195598321501470720, #Moi
-                     180790976128745472] #Rya
-    bots_id = [798512290222833664, 748237663718604932]
-    log_channel = client.get_channel(820006114217033808)
-    confirmation_channel = client.get_channel(823930580076462120)
-    if payload.channel_id == 823930580076462120:
-        message = await confirmation_channel.fetch_message(payload.message_id)
-        if payload.member.id in allowed_users:
-            with open("in-deletion.json", "r+") as deletion_file:
-                deletion_data = json.load(deletion_file)
-                deletion_file.seek(0)
-                if str(payload.message_id) in (deletion_data):
-                    if payload.emoji.name == "yes":
-                        with open("user-data.json", "r+") as file:
-                            data = json.load(file)
-                            member_id = deletion_data[str(payload.message_id)]["user_id"]
-                            member_name = deletion_data[str(payload.message_id)]["user_name"]
-                            data[str(member_id)]["left_server"] = "yes"
-                            file.seek(0)
-                            json.dump(data, file, indent=4)
-                            del deletion_data[str(payload.message_id)]
-                            json.dump(deletion_data, deletion_file, indent=4)
-                            deletion_file.truncate()
-                            embed = discord.Embed(title="<a:loading:762295133747413022> Deleting GDPS...", color = discord.Colour.green())
-                            creating = await confirmation_channel.send(embed=embed)
-                            process = await asyncio.create_subprocess_shell(f'./DelGDPS-Bot.sh {data[str(member_id)]["gdps_custom_url"]}')
-                            await process.communicate()
-                            await log_channel.send(f"<@{member_id}> (\"{member_name}\") got his GDPS deleted with no way of creating a new one because he left the server.")
-                            await creating.delete()
-                            await message.delete()
-                    elif payload.emoji.name == "no":
-                        del deletion_data[str(payload.message_id)]
-                        json.dump(deletion_data, deletion_file, indent=4)
-                        deletion_file.truncate()
-                        await message.delete()
-                else:
-                    await confirmation_channel.send("An error occured.")
-        else:
-            if payload.member.id in bots_id:
-                return
-            else:
-                await message.remove_reaction(payload.emoji, payload.member)
-
-@client.event
-async def on_member_remove(member):
-    userid = str(member.id)
-    confirmation_channel = client.get_channel(823930580076462120)
-    with open("user-data.json", "r+") as file:
-        data = json.load(file)
-        if str(member.id) in str(data):
-            if data[str(member.id)]["left_server"] == "yes":
-                return
-            else:
-                with open("in-deletion.json", "r+") as deletion_file:
-                    deletion_data = json.load(deletion_file)
-                    if str(member.id) in str(deletion_data):
-                        return
-                    else:
-                        embed = discord.Embed(title="GDPS Ban", description = f"**GDPS Owner** : {member.mention}\n**Owner name** : {member.name}\n\n**Server name** : {data[userid]['gdps_name']} \n**Custom URL** : {data[userid]['gdps_custom_url']} \n**Left server** : {member.guild.name}", color = discord.Colour.green())
-                        message = await confirmation_channel.send(embed=embed)
-                        await message.add_reaction("<:yes:809571059941769247>")
-                        await message.add_reaction("<:no:809571073531183144>")
-                        deletion_file.seek(0)
-                        deletion_data[message.id] = {"gdps_custom_url": data[userid]["gdps_custom_url"],
-                                                    "user_name": member.name,
-                                                    "user_id": member.id}
-                        json.dump(deletion_data, deletion_file, indent=4)
-"""
 
 def checklang(serverid):
     if serverid == 743013350446989442:
@@ -1705,31 +1675,8 @@ async def check_donator(ctx, gdpsowner=None):
         return False
 
 def execute_sql(command, values=None):
-    global cursor
-    try:
-        cursor.execute(command, values)
-    except Exception as e:
-        print(e)
-        global connection
-        connection.disconnect()
-        while True:
-            connection = mysql.connector.connect(host=mysql_ip,
-                                                database=mysql_database,
-                                                user=mysql_user,
-                                                port = int(mysql_port),
-                                                password=mysql_pass)
-            if connection.is_connected:
-                cursor = connection.cursor(buffered=True)
-                connection.autocommit = 1
-                try:
-                    cursor.execute(command, values)
-                except Exception as e:
-                    print(e)
-                    asyncio.sleep(5)
-                    continue
-                return cursor
-            else:
-                asyncio.sleep(5)
+    connection.ping(reconnect=True)
+    cursor.execute(command, values)
     return cursor
 
 @client.event
